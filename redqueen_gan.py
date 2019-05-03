@@ -10,7 +10,7 @@ from keras.layers import Flatten, BatchNormalization, Dense, Activation
 from keras.layers.advanced_activations import LeakyReLU
 from keras.optimizers import Adam
 from keras.preprocessing.image import ImageDataGenerator
-from PIL import Image
+from PIL import Image, ImageFilter
 
 source_directory = '/birds/'
 results_directory = '/results/'
@@ -113,19 +113,14 @@ def save_sample_images(generated_images, epoch):
         fig.axes.get_yaxis().set_visible(False)
 
     plt.tight_layout()
-    gallery_save_name = results_directory + 'Epoch ' + str(epoch) + ' Gallery.png'
+    if (epoch < epochs - 1):
+        gallery_save_name = results_directory + 'Epoch ' + str(epoch) + ' Gallery.png'
+    else: gallery_save_name = results_directory + 'Final ' + ' Gallery.png'
     try: os.remove(gallery_save_name)
     except: pass
     plt.savefig(gallery_save_name, bbox_inches='tight', pad_inches=0)
     plt.pause(0.000000000001)
     plt.show()
-
-    if (epoch < (epochs - 1)):
-        save_epoch_directory = results_directory + "Epoch " + str(epoch) + '/'
-    else:
-        save_epoch_directory = results_directory + 'Final' + '/'
-    for i in range(generated_images.shape[0]):
-        pass
 
 def train_dcgan(batch_size, epochs, image_shape, source_directory):
     generator = build_generator()
@@ -194,12 +189,12 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
         generated_images = generator.predict(fixed_noise)
         # Create a thumbnail gallery
         save_sample_images(generated_images, epoch)
-
+        # save full galleries
         if(epoch < epochs - 1):
             for epoch_image_batch in range(epoch_image_batch_count):
                 noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))
                 generated_novel_images = generator.predict(noise)
-                save_epoch_directory = results_directory + "Epoch " + str(epoch) + '/'
+                save_epoch_directory = results_directory + 'Epoch ' + str(epoch) + '/'
                 try: os.makedirs(save_epoch_directory)
                 except: pass
                 for i in range(batch_size):
@@ -207,18 +202,18 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
                     image += 1
                     image *= 127.5
                     save_image = Image.fromarray(image.astype(np.uint8))
-                    image_save_name = save_epoch_directory +'Image ' + str(i) + '.png'
+                    image_save_name = save_epoch_directory +' Image ' + str(i) + '.png'
                     try: os.remove(image_save_name)
                     except: pass
                     save_image.save(image_save_name)
-
+                    save_image.close()
         else:
+            save_final_directory = results_directory + 'Final ' + '/'
+            try: os.makedirs(save_final_directory)
+            except: pass
             for final_image_batch in range(final_image_batch_count):
                 noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))
                 generated_novel_images = generator.predict(noise)
-                save_final_directory = results_directory + 'Final ' + '/'
-                try: os.makedirs(save_final_directory)
-                except: pass
                 for i in range(batch_size):
                     image = generated_novel_images[i, :, :, :]
                     image += 1
@@ -227,7 +222,20 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
                     image_save_name = save_final_directory + 'Image ' + str(i) + '.png'
                     try: os.remove(image_save_name)
                     except: pass
+                    width, height = save_image.size
+                    save_image = save_image.resize((zoom * height, zoom * width), resample=Image.LANCZOS)
+                    save_image = save_image.filter(ImageFilter.EDGE_ENHANCE)
                     save_image.save(image_save_name)
+                    save_image.close()
+                # Creates an html index file for all images, Windows
+                os.chdir(save_final_directory)
+                try: os.remove('index.html')
+                except: pass
+                if os.name == 'nt':
+                    pass
+                    #subprocess.call('for %i in (*.jpg) do echo ^<img src="%i" /^> >> index.html',
+                    #                shell=True, stdout=open(os.devnull, 'wb'))
+
 
         plt.figure(1)
         plt.plot(batches, adversarial_loss, color='green', label='Generator Loss')
