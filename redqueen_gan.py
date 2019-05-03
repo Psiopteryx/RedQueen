@@ -10,6 +10,7 @@ from keras.layers import Flatten, BatchNormalization, Dense, Activation
 from keras.layers.advanced_activations import LeakyReLU
 from keras.optimizers import Adam
 from keras.preprocessing.image import ImageDataGenerator
+from PIL import Image
 
 source_directory = '/birds/'
 results_directory = '/results/'
@@ -25,7 +26,7 @@ leaky_ReLU = 0.2
 label_noise = 0.2  # True/false noise for discriminator
 
 epoch_image_batch_count = 2    # Cycle through entire batch of images x times + fixed_noise batch
-final_image_batch_count = 20
+final_image_batch_count = 5
 zoom = 3  # Zoom factor, and edge enhance final output
 
 def load_dataset(source_directory, batch_size, image_shape):
@@ -94,13 +95,13 @@ def build_generator():
 
     return generator
 
-def save_generated_images(generated_images, epoch):
+def save_sample_images(generated_images, epoch):
     # save a summary gallery
     plt.figure(figsize=(8,8), num=2)
     gs1 = gridspec.GridSpec(8,8)
     gs1.update(wspace=0, hspace=0)
 
-    for i in range(64):
+    for i in range(batch_size):
         ax1 = plt.subplot(gs1[i])
         ax1.set_aspect('equal')
         image = generated_images[i, :, :, :]
@@ -123,7 +124,8 @@ def save_generated_images(generated_images, epoch):
         save_epoch_directory = results_directory + "Epoch " + str(epoch) + '/'
     else:
         save_epoch_directory = results_directory + 'Final' + '/'
-
+    for i in range(generated_images.shape[0]):
+        pass
 
 def train_dcgan(batch_size, epochs, image_shape, source_directory):
     generator = build_generator()
@@ -146,8 +148,7 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
 
     try: os.makedirs(results_directory)
     except: pass
-    generate_fixed_noise = True  # To create one batch of images from constant noise to view evolution
-    fixed_noise = []
+    fixed_noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))  # for a fixed batch over time
     batch_count = 0
     plt.ion()
     for epoch in range(epochs):
@@ -159,9 +160,6 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
             current_batch_size = real_images.shape[0]  # for final batch (smaller)
 
             noise = np.random.normal(0, 1, size=(current_batch_size,) + (1,1,100))
-            if generate_fixed_noise:
-                fixed_noise = noise
-                generate_fixed_noise = False
             generated_images = generator.predict(noise)
 
             # introduce noise to discriminator True/False label
@@ -192,18 +190,44 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
                   + str(round(d_loss, 2)) + '\tBatch time: ' + str(round(time_elapsed, 0)) + ' sec', end="")
 
             batch_count += 1
+
         generated_images = generator.predict(fixed_noise)
+        # Create a thumbnail gallery
+        save_sample_images(generated_images, epoch)
+
         if(epoch < epochs - 1):
             for epoch_image_batch in range(epoch_image_batch_count):
                 noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))
                 generated_novel_images = generator.predict(noise)
-                np.append(generated_images, generated_novel_images)
+                save_epoch_directory = results_directory + "Epoch " + str(epoch) + '/'
+                try: os.makedirs(save_epoch_directory)
+                except: pass
+                for i in range(batch_size):
+                    image = generated_novel_images[i, :, :, :]
+                    image += 1
+                    image *= 127.5
+                    save_image = Image.fromarray(image.astype(np.uint8))
+                    image_save_name = save_epoch_directory +'Image ' + str(i) + '.png'
+                    try: os.remove(image_save_name)
+                    except: pass
+                    save_image.save(image_save_name)
+
         else:
             for final_image_batch in range(final_image_batch_count):
                 noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))
                 generated_novel_images = generator.predict(noise)
-                np.append(generated_images, generated_novel_images)
-        save_generated_images(generated_images, epoch)
+                save_final_directory = results_directory + 'Final ' + '/'
+                try: os.makedirs(save_final_directory)
+                except: pass
+                for i in range(batch_size):
+                    image = generated_novel_images[i, :, :, :]
+                    image += 1
+                    image *= 127.5
+                    save_image = Image.fromarray(image.astype(np.uint8))
+                    image_save_name = save_final_directory + 'Image ' + str(i) + '.png'
+                    try: os.remove(image_save_name)
+                    except: pass
+                    save_image.save(image_save_name)
 
         plt.figure(1)
         plt.plot(batches, adversarial_loss, color='green', label='Generator Loss')
