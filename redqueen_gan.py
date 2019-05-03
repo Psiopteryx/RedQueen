@@ -18,11 +18,15 @@ image_size = 64
 batch_size = 64
 
 discriminator_learn_rate = 0.0002
-generator_learn_rate = 0.0002
+generator_learn_rate = 0.00015
 
-epochs = 200
+epochs = 3
 leaky_ReLU = 0.2
 label_noise = 0.2  # True/false noise for discriminator
+
+epoch_image_batch_count = 2    # Cycle through entire batch of images x times + fixed_noise batch
+final_image_batch_count = 20
+zoom = 3  # Zoom factor, and edge enhance final output
 
 def load_dataset(source_directory, batch_size, image_shape):
     dataset = ImageDataGenerator()
@@ -91,6 +95,7 @@ def build_generator():
     return generator
 
 def save_generated_images(generated_images, epoch):
+    # save a summary gallery
     plt.figure(figsize=(8,8), num=2)
     gs1 = gridspec.GridSpec(8,8)
     gs1.update(wspace=0, hspace=0)
@@ -107,13 +112,20 @@ def save_generated_images(generated_images, epoch):
         fig.axes.get_yaxis().set_visible(False)
 
     plt.tight_layout()
-    save_name = 'samples_epoch' + \
-                str(epoch + 1) + '_batch_' + '.png'
-    plt.savefig(save_name, bbox_inches='tight', pad_inches=0)
+    gallery_save_name = results_directory + 'Epoch ' + str(epoch) + ' Gallery.png'
+    try: os.remove(gallery_save_name)
+    except: pass
+    plt.savefig(gallery_save_name, bbox_inches='tight', pad_inches=0)
     plt.pause(0.000000000001)
     plt.show()
 
-def train_dcgan(batch_size, epochs, image_shape, dataset_path):
+    if (epoch < (epochs - 1)):
+        save_epoch_directory = results_directory + "Epoch " + str(epoch) + '/'
+    else:
+        save_epoch_directory = results_directory + 'Final' + '/'
+
+
+def train_dcgan(batch_size, epochs, image_shape, source_directory):
     generator = build_generator()
     discriminator = build_discriminator(image_shape)
 
@@ -131,10 +143,13 @@ def train_dcgan(batch_size, epochs, image_shape, dataset_path):
     adversarial_loss = np.empty(shape=1)
     discriminator_loss = np.empty(shape=1)
     batches = np.empty(shape=1)
-    plt.ion()
-    batch_count = 0
 
-    generated_images = []
+    try: os.makedirs(results_directory)
+    except: pass
+    generate_fixed_noise = True  # To create one batch of images from constant noise to view evolution
+    fixed_noise = []
+    batch_count = 0
+    plt.ion()
     for epoch in range(epochs):
         for batch_number in range(num_batches):
             batch_start_time = time.time()
@@ -144,6 +159,9 @@ def train_dcgan(batch_size, epochs, image_shape, dataset_path):
             current_batch_size = real_images.shape[0]  # for final batch (smaller)
 
             noise = np.random.normal(0, 1, size=(current_batch_size,) + (1,1,100))
+            if generate_fixed_noise:
+                fixed_noise = noise
+                generate_fixed_noise = False
             generated_images = generator.predict(noise)
 
             # introduce noise to discriminator True/False label
@@ -174,7 +192,19 @@ def train_dcgan(batch_size, epochs, image_shape, dataset_path):
                   + str(round(d_loss, 2)) + '\tBatch time: ' + str(round(time_elapsed, 0)) + ' sec', end="")
 
             batch_count += 1
+        generated_images = generator.predict(fixed_noise)
+        if(epoch < epochs - 1):
+            for epoch_image_batch in range(epoch_image_batch_count):
+                noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))
+                generated_novel_images = generator.predict(noise)
+                np.append(generated_images, generated_novel_images)
+        else:
+            for final_image_batch in range(final_image_batch_count):
+                noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))
+                generated_novel_images = generator.predict(noise)
+                np.append(generated_images, generated_novel_images)
         save_generated_images(generated_images, epoch)
+
         plt.figure(1)
         plt.plot(batches, adversarial_loss, color='green', label='Generator Loss')
         plt.plot(batches, discriminator_loss, color='blue', label='Discriminator Loss')
@@ -185,12 +215,14 @@ def train_dcgan(batch_size, epochs, image_shape, dataset_path):
             plt.legend()
         plt.pause(0.0000000001)
         plt.show()
-        plt.savefig('trainingLossPlot.png')
+        results_save_name = results_directory + 'Statistics.png'
+        try: os.remove(results_save_name)
+        except: pass
+        plt.savefig(results_save_name)
 
 def main():
     image_shape = (64, 64, 3)
     train_dcgan(batch_size, epochs, image_shape, source_directory)
-
 
 if __name__ == '__main__':
     start_time = time.time()
