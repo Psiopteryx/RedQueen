@@ -10,11 +10,9 @@ from keras.layers import Flatten, BatchNormalization, Dense, Activation
 from keras.layers.advanced_activations import LeakyReLU
 from keras.optimizers import Adam
 from keras.preprocessing.image import ImageDataGenerator
-import scratch
 
-source_directory = 'd:/birds/'
-results_directory = 'd:/results/'
-
+source_directory = '/birds/'
+results_directory = '/results/'
 
 image_size = 64
 batch_size = 64
@@ -176,7 +174,6 @@ def train_dcgan(batch_size, epochs, image_shape, dataset_path):
                   + str(round(d_loss, 2)) + '\tBatch time: ' + str(round(time_elapsed, 0)) + ' sec', end="")
 
             batch_count += 1
-
         save_generated_images(generated_images, epoch)
         plt.figure(1)
         plt.plot(batches, adversarial_loss, color='green', label='Generator Loss')
