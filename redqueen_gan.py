@@ -232,10 +232,8 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
                 try: os.remove('index.html')
                 except: pass
                 if os.name == 'nt':
-                    pass
-                    #subprocess.call('for %i in (*.jpg) do echo ^<img src="%i" /^> >> index.html',
-                    #                shell=True, stdout=open(os.devnull, 'wb'))
-
+                    subprocess.call('for %i in (*.jpg) do echo ^<img src="%i" /^> >> index.html',
+                                    shell=True, stdout=open(os.devnull, 'wb'))
 
         plt.figure(1)
         plt.plot(batches, adversarial_loss, color='green', label='Generator Loss')
