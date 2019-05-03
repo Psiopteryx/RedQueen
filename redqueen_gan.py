@@ -92,7 +92,7 @@ def build_generator():
 
     return generator
 
-def save_generated_images(generated_images, epoch, batch_number):
+def save_generated_images(generated_images, epoch):
     plt.figure(figsize=(8,8), num=2)
     gs1 = gridspec.GridSpec(8,8)
     gs1.update(wspace=0, hspace=0)
@@ -109,8 +109,8 @@ def save_generated_images(generated_images, epoch, batch_number):
         fig.axes.get_yaxis().set_visible(False)
 
     plt.tight_layout()
-    save_name = 'generated images / generated samples_epoch' + \
-                str(epoch + 1) + '_batch_' +str(batch_number + 1) + '.png'
+    save_name = 'samples_epoch' + \
+                str(epoch + 1) + '_batch_' + '.png'
     plt.savefig(save_name, bbox_inches='tight', pad_inches=0)
     plt.pause(0.000000000001)
     plt.show()
@@ -136,8 +136,8 @@ def train_dcgan(batch_size, epochs, image_shape, dataset_path):
     plt.ion()
     batch_count = 0
 
+    generated_images = []
     for epoch in range(epochs):
-        print("Epoch: " + str(epoch+1) + "/" + str(epochs) + " :")
         for batch_number in range(num_batches):
             batch_start_time = time.time()
             real_images = dataset.next()
@@ -169,17 +169,15 @@ def train_dcgan(batch_size, epochs, image_shape, dataset_path):
             adversarial_loss = np.append(adversarial_loss, g_loss)
             batches = np.append(batches, batch_count)
 
-            if((batch_number + 1) % 50 == 0 and current_batch_size == batch_size):
-                save_generated_images(generated_images, epoch, batch_number)
-
             time_elapsed = time.time() - start_time
 
-            print("Batch: " + str(batch_number + 1) + "/" + str(num_batches)
-                  + "\tGenerator loss: " + str(round(g_loss, 3)) + "\tDscriminator loss: " + str(round(d_loss, 3))
-                  + '\tBatch time: ' + str(round(time_elapsed, 3)) + ' sec')
+            print("\rEpoch: " + str(epoch) + "/" + str(epochs) + "\tBatch: " + str(batch_number + 1)
+                  + "/" + str(num_batches) + "\tGenerator loss: " + str(round(g_loss, 2)) + "\tDscriminator loss: "
+                  + str(round(d_loss, 2)) + '\tBatch time: ' + str(round(time_elapsed, 0)) + ' sec', end="")
 
             batch_count += 1
 
+        save_generated_images(generated_images, epoch)
         plt.figure(1)
         plt.plot(batches, adversarial_loss, color='green', label='Generator Loss')
         plt.plot(batches, discriminator_loss, color='blue', label='Discriminator Loss')
