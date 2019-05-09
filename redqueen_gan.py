@@ -2,6 +2,7 @@ import time, os, sys, humanfriendly, warnings, subprocess
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from keras.models import Sequential
@@ -10,6 +11,7 @@ from keras.layers import Flatten, BatchNormalization, Dense, Activation
 from keras.layers.advanced_activations import LeakyReLU
 from keras.optimizers import Adam
 from keras.preprocessing.image import ImageDataGenerator
+from playsound import playsound
 from PIL import Image, ImageFilter
 
 source_directory = '/birds/'
@@ -21,13 +23,16 @@ batch_size = 64
 discriminator_learn_rate = 0.0002
 generator_learn_rate = 0.00015
 
-epochs = 3
+epochs = 5
 leaky_ReLU = 0.2
 label_noise = 0.2  # True/false noise for discriminator
 
 epoch_image_batch_count = 2    # Cycle through entire batch of images x times + fixed_noise batch
 final_image_batch_count = 5
 zoom = 3  # Zoom factor, and edge enhance final output
+
+matplotlib.rcParams['animation.embed_limit'] = 2**128
+Image.MAX_IMAGE_PIXELS = None
 
 def load_dataset(source_directory, batch_size, image_shape):
     dataset = ImageDataGenerator()
@@ -98,12 +103,12 @@ def build_generator():
 def save_sample_images(generated_images, epoch):
     # save a summary gallery
     plt.figure(figsize=(8,8), num=2)
-    gs1 = gridspec.GridSpec(8,8)
+    gs1 = gridspec.GridSpec(4,4)
     gs1.update(wspace=0, hspace=0)
 
-    for i in range(batch_size):
+    for i in range(16):
         ax1 = plt.subplot(gs1[i])
-        ax1.set_aspect('equal')
+        #ax1.set_aspect('equal')
         image = generated_images[i, :, :, :]
         image +=1
         image *= 127.5
@@ -114,13 +119,11 @@ def save_sample_images(generated_images, epoch):
 
     plt.tight_layout()
     if (epoch < epochs - 1):
-        gallery_save_name = results_directory + 'Epoch ' + str(epoch) + ' Gallery.png'
+        gallery_save_name = results_directory + 'Epoch ' + str(epoch + 1) + ' Gallery.png'
     else: gallery_save_name = results_directory + 'Final ' + ' Gallery.png'
     try: os.remove(gallery_save_name)
     except: pass
     plt.savefig(gallery_save_name, bbox_inches='tight', pad_inches=0)
-    plt.pause(0.000000000001)
-    plt.show()
 
 def train_dcgan(batch_size, epochs, image_shape, source_directory):
     generator = build_generator()
@@ -145,7 +148,6 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
     except: pass
     fixed_noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))  # for a fixed batch over time
     batch_count = 0
-    plt.ion()
     for epoch in range(epochs):
         for batch_number in range(num_batches):
             batch_start_time = time.time()
@@ -178,11 +180,14 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
             adversarial_loss = np.append(adversarial_loss, g_loss)
             batches = np.append(batches, batch_count)
 
-            time_elapsed = time.time() - start_time
+            batch_time_elapsed = time.time() - batch_start_time
+            batch_total_run_est_time = (batch_time_elapsed * num_batches * (epochs - epoch))\
+                                       - (batch_time_elapsed * (batch_number / num_batches))
+            batch_total_ETA = humanfriendly.format_timespan(round(batch_total_run_est_time, 0))
 
-            print("\rEpoch: " + str(epoch) + "/" + str(epochs) + "\tBatch: " + str(batch_number + 1)
+            print("\rEpoch: " + str(epoch + 1) + "/" + str(epochs) + "\tBatch: " + str(batch_number + 1)
                   + "/" + str(num_batches) + "\tGenerator loss: " + str(round(g_loss, 2)) + "\tDscriminator loss: "
-                  + str(round(d_loss, 2)) + '\tBatch time: ' + str(round(time_elapsed, 0)) + ' sec', end="")
+                  + str(round(d_loss, 2)) + '\tETA: ' + batch_total_ETA, end="")
 
             batch_count += 1
 
@@ -191,10 +196,11 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
         save_sample_images(generated_images, epoch)
         # save full galleries
         if(epoch < epochs - 1):
+            image_count = 1
             for epoch_image_batch in range(epoch_image_batch_count):
                 noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))
                 generated_novel_images = generator.predict(noise)
-                save_epoch_directory = results_directory + 'Epoch ' + str(epoch) + '/'
+                save_epoch_directory = results_directory + 'Epoch ' + str(epoch + 1) + '/'
                 try: os.makedirs(save_epoch_directory)
                 except: pass
                 for i in range(batch_size):
@@ -202,14 +208,19 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
                     image += 1
                     image *= 127.5
                     save_image = Image.fromarray(image.astype(np.uint8))
-                    image_save_name = save_epoch_directory +' Image ' + str(i) + '.png'
+                    image_save_name = save_epoch_directory + ' Image ' + str(image_count) + '.png'
                     try: os.remove(image_save_name)
                     except: pass
                     save_image.save(image_save_name)
                     save_image.close()
+                    image_count += 1
         else:
-            save_final_directory = results_directory + 'Final ' + '/'
+            image_count = 1
+            save_final_directory = results_directory + 'Final/'
+            save_final_enhanced_directory = results_directory + 'Final Enhanced/'
             try: os.makedirs(save_final_directory)
+            except: pass
+            try: os.makedirs(save_final_enhanced_directory)
             except: pass
             for final_image_batch in range(final_image_batch_count):
                 noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))
@@ -219,7 +230,11 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
                     image += 1
                     image *= 127.5
                     save_image = Image.fromarray(image.astype(np.uint8))
-                    image_save_name = save_final_directory + 'Image ' + str(i) + '.png'
+                    image_save_name = save_final_directory + 'Image ' + str(image_count) + '.png'
+                    try: os.remove(image_save_name)
+                    except: pass
+                    save_image.save(image_save_name)
+                    image_save_name = save_final_enhanced_directory + 'Image ' + str(image_count) + '.png'
                     try: os.remove(image_save_name)
                     except: pass
                     width, height = save_image.size
@@ -227,12 +242,13 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
                     save_image = save_image.filter(ImageFilter.EDGE_ENHANCE)
                     save_image.save(image_save_name)
                     save_image.close()
-                # Creates an html index file for all images, Windows
-                os.chdir(save_final_directory)
+                    image_count += 1
+                # Creates an html index file for all images, Windows (sometimes)
+                os.chdir(save_final_enhanced_directory)
                 try: os.remove('index.html')
                 except: pass
                 if os.name == 'nt':
-                    subprocess.call('for %i in (*.jpg) do echo ^<img src="%i" /^> >> index.html',
+                    subprocess.call('for %i in (*.png) do echo ^<img src="%i" /^> >> index.html',
                                     shell=True, stdout=open(os.devnull, 'wb'))
 
         plt.figure(1)
@@ -243,8 +259,6 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
         plt.ylabel("Loss")
         if epoch == 0:
             plt.legend()
-        plt.pause(0.0000000001)
-        plt.show()
         results_save_name = results_directory + 'Statistics.png'
         try: os.remove(results_save_name)
         except: pass
@@ -260,3 +274,8 @@ if __name__ == '__main__':
     end_time = time.time()
     duration = humanfriendly.format_timespan(round(end_time - start_time, 1))
     print("\nRuntime for GAN: " + str(duration))
+    try:
+        os.chdir(sys.path[0])
+        playsound('.\cloak.mp3')
+    except: pass
+
