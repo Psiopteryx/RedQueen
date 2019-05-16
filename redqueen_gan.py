@@ -14,11 +14,11 @@ from keras.preprocessing.image import ImageDataGenerator
 from playsound import playsound
 from PIL import Image, ImageFilter
 
-source_directory = '/birds/'
+source_directory = '/source/'
 results_directory = '/results/'
 
-image_size = 64
-batch_size = 64
+image_size = 128
+batch_size = 128
 
 discriminator_learn_rate = 0.0002
 generator_learn_rate = 0.00015
@@ -42,9 +42,9 @@ def load_dataset(source_directory, batch_size, image_shape):
 
 def build_discriminator(image_shape):
     discriminator = Sequential()
-    discriminator.add(Conv2D(filters=64, kernel_size=(5,5), strides=(2,2), padding='same',
-                data_format='channels_last',  kernel_initializer='glorot_uniform', input_shape=(image_shape)))
-    discriminator.add(LeakyReLU(leaky_ReLU))
+    #discriminator.add(Conv2D(filters=64, kernel_size=(5,5), strides=(2,2), padding='same',
+    #            data_format='channels_last',  kernel_initializer='glorot_uniform', input_shape=(image_shape)))
+    #discriminator.add(LeakyReLU(leaky_ReLU))
 
     discriminator.add(Conv2D(filters=128, kernel_size=(5, 5), strides=(2, 2), padding='same',
                                 data_format='channels_last', kernel_initializer='glorot_uniform'))
@@ -61,6 +61,13 @@ def build_discriminator(image_shape):
     discriminator.add(BatchNormalization(momentum=0.5))
     discriminator.add(LeakyReLU(leaky_ReLU))
 
+    #new
+    discriminator.add(Conv2D(filters=1024, kernel_size=(5, 5), strides=(2, 2), padding='same',
+                                data_format='channels_last', kernel_initializer='glorot_uniform'))
+    discriminator.add(BatchNormalization(momentum=0.5))
+    discriminator.add(LeakyReLU(leaky_ReLU))
+    #end new, this was to go from 64 to 128
+
     discriminator.add(Flatten())
     discriminator.add(Dense(1))
     discriminator.add(Activation('sigmoid'))
@@ -71,8 +78,15 @@ def build_discriminator(image_shape):
 
 def build_generator():
     generator = Sequential()
-    generator.add(Dense(units=4 * 4 * 512, kernel_initializer='glorot_uniform', input_shape=(1, 1, 100)))
-    generator.add(Reshape(target_shape=(4, 4, 512)))
+    # changed to 1024 from 512, should increase input random shape as well
+    generator.add(Dense(units=4 * 4 * 1024, kernel_initializer='glorot_uniform', input_shape=(1, 1, 200)))
+    generator.add(Reshape(target_shape=(4, 4, 1024)))
+    generator.add(BatchNormalization(momentum=0.5))
+    generator.add(Activation('relu'))
+
+    #new
+    generator.add(Conv2DTranspose(filters=512, kernel_size=(5, 5), strides=(2, 2), padding='same',
+                                  data_format='channels_last', kernel_initializer='glorot_uniform'))
     generator.add(BatchNormalization(momentum=0.5))
     generator.add(Activation('relu'))
 
@@ -128,7 +142,8 @@ def save_sample_images(generated_images, epoch):
 def train_dcgan(batch_size, epochs, image_shape, source_directory):
     generator = build_generator()
     discriminator = build_discriminator(image_shape)
-
+    print("Generator")
+    print(generator.summary())
     gan = Sequential()
     discriminator.trainable = False  # Only for adversarial model
     gan.add(generator)
@@ -143,20 +158,20 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
     adversarial_loss = np.empty(shape=1)
     discriminator_loss = np.empty(shape=1)
     batches = np.empty(shape=1)
-
+    print(gan.summary())
     try: os.makedirs(results_directory)
     except: pass
-    fixed_noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 100))  # for a fixed batch over time
+    fixed_noise = np.random.normal(0, 1, size=(batch_size,) + (1, 1, 200))  # for a fixed batch over time
     batch_count = 0
     for epoch in range(epochs):
         for batch_number in range(num_batches):
             batch_start_time = time.time()
             real_images = dataset.next()
-            real_images /= 127.5  # normalise
+            real_images /= 127.5  # normalise. Does not need modifying
             real_images -= 1
             current_batch_size = real_images.shape[0]  # for final batch (smaller)
 
-            noise = np.random.normal(0, 1, size=(current_batch_size,) + (1,1,100))
+            noise = np.random.normal(0, 1, size=(current_batch_size,) + (1,1,200))
             generated_images = generator.predict(noise)
 
             # introduce noise to discriminator True/False label
@@ -165,17 +180,20 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
 
             # train discriminator
             discriminator.trainable = True
+            print("Training Discriminator on Real")
             d_loss = discriminator.train_on_batch(real_images, real_y)
+            print("Training Discriminator on Fake")
             d_loss += discriminator.train_on_batch(generated_images, fake_y)
             discriminator_loss = np.append(discriminator_loss, d_loss)
 
             # train generator
             discriminator.trainable = False
-            noise = np.random.normal(0, 1, size=(current_batch_size * 2,) + (1, 1, 100))
+            noise = np.random.normal(0, 1, size=(current_batch_size * 2,) + (1, 1, 200))
 
             # noise to discriminator True/False label again
             fake_y = (np.ones(current_batch_size * 2) - np.random.random_sample(current_batch_size *2) * label_noise)
 
+            print("Training Generator")
             g_loss = gan.train_on_batch(noise, fake_y)
             adversarial_loss = np.append(adversarial_loss, g_loss)
             batches = np.append(batches, batch_count)
@@ -265,7 +283,7 @@ def train_dcgan(batch_size, epochs, image_shape, source_directory):
         plt.savefig(results_save_name)
 
 def main():
-    image_shape = (64, 64, 3)
+    image_shape = (image_size, image_size, 3)
     train_dcgan(batch_size, epochs, image_shape, source_directory)
 
 if __name__ == '__main__':
